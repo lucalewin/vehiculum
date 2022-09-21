@@ -7,6 +7,8 @@ This project aims to be an alternative to AndroidAuto with additional options li
 
 ---
 
+Take a look at the [Documentation](https://lucalewin.github.io/better-car-display/docs)
+
 ## Project Structure
 
 *current structure, subject to change*
