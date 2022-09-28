@@ -52,7 +52,7 @@ impl Message {
 #[derive(Debug)]
 pub enum MessageTypeFlags {
     Control = 0,
-    Specific = 1 << 2
+    // Specific = 1 << 2
 }
 
 #[derive(Debug)]
@@ -75,22 +75,22 @@ pub enum MessageType {
     AudioFocusResponse = 0x13,
 }
 
-enum MediaMessageType {
-    MediaWithTimestampIndication = 0x0000,
-    MediaIndication = 0x0001,
-    SetupRequest = 0x8000,
-    StartIndication = 0x8001,
-    SetupResponse = 0x8003,
-    MediaAckIndication = 0x8004,
-    VideoFocusIndication = 0x8008,
-}
+// enum MediaMessageType {
+//     MediaWithTimestampIndication = 0x0000,
+//     MediaIndication = 0x0001,
+//     SetupRequest = 0x8000,
+//     StartIndication = 0x8001,
+//     SetupResponse = 0x8003,
+//     MediaAckIndication = 0x8004,
+//     VideoFocusIndication = 0x8008,
+// }
   
-enum InputChannelMessageType {
-    None = 0,
-    Event = 0x8001,
-    HandshakeRequest = 0x8002,
-    HandshakeResponse = 0x8003,
-}
+// enum InputChannelMessageType {
+//     None = 0,
+//     Event = 0x8001,
+//     HandshakeRequest = 0x8002,
+//     HandshakeResponse = 0x8003,
+// }
 
 impl MessageType {
     pub fn to_be_bytes(self) -> [u8; 2] {

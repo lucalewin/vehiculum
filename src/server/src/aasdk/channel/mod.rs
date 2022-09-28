@@ -1,5 +1,20 @@
+use super::messenger::Message;
 
-#[derive(Debug, FromPrimitive)]
+
+pub struct ChannelHandler {}
+
+impl ChannelHandler {
+    pub fn new() -> Self {
+        ChannelHandler {}
+    }
+
+    pub fn handle_message(&mut self, _msg: Message) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub enum ChannelID {
     Control = 0,
     Input,

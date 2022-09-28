@@ -3,5 +3,6 @@
 members = [
     "src/server",
     "src/client",
-    "src/common"
+    "src/common",
+    "src/aasdk"
 ]
