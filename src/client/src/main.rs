@@ -47,6 +47,10 @@ impl Communicator {
 
         self.send_auth_complete()?;
 
+        let message = self.recv().unwrap();
+
+        debug!("received message: {:?}", message);
+
         Ok(())
     }
 
@@ -77,14 +81,10 @@ impl Communicator {
     }
 
     fn do_ssl_handshake(&mut self, message: &Option<Message>) -> bool {
-        // self.ssl_handler.reinit_ssl();
-        
         if let Some(message) = message {
             if message.message_type() != MessageType::SSL_HANDSHAKE {
                 panic!("expected SSL handshake message");
             }
-
-            trace!("some message");
 
             self.ssl_handler.bio_write(message.payload());
         }
@@ -105,10 +105,8 @@ impl Communicator {
         let mut message_buffer = Vec::new();
         
         let mut buffer = [0u8; 512];
-        // while let Ok(len) = bio_stream.read(&mut buffer) {
         while let Ok(len) = self.ssl_handler.bio_read(&mut buffer) {
-            if len <= 0 { break }
-
+            if len <= 0 { break; }
             message_buffer.extend_from_slice(&buffer[..len]);
         }
         
@@ -118,8 +116,6 @@ impl Communicator {
                 EncryptionType::PLAIN.bits() | FrameType::BULK.bits(),
                 MessageType::SSL_HANDSHAKE,
                 message_buffer);
-
-        debug!("SSL send message: {:?}", message);
 
         self.send(message).unwrap();
 

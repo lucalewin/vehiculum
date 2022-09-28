@@ -65,18 +65,14 @@ impl SslHandler {
         let stream = self.ssl_stream.get_mut();
 
         // write to read_bio
-        stream.read_bio.clear();
         stream.read_bio.write_all(buffer).unwrap();
     }
 
-    pub fn bio_read(&mut self, mut buffer: &mut [u8]) -> std::io::Result<usize> {
+    pub fn bio_read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         trace!("bio_read");
         let stream = self.ssl_stream.get_mut();
-        let result = buffer.write(stream.write_bio.as_slice());
 
-        stream.write_bio.clear();
-
-        result
+        common::util::vec_write_to_slice(&mut stream.write_bio, buffer)
     }
 }
 
@@ -102,31 +98,13 @@ impl Read for BioStream {
             return Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "bio_in is empty"));
         }
 
-        {
-            if buf.len() == self.read_bio.len() {
-                buf.copy_from_slice(&self.read_bio);
-                trace!("read: copy_from_vec#1: {:?}", buf.len());
-                self.read_bio.clear();
-                Ok(buf.len())
-            } else if buf.len() > self.read_bio.len() {
-                buf[..self.read_bio.len()].copy_from_slice(&self.read_bio);
-                trace!("read: copy_from_vec#2: {:?}", self.read_bio.len());
-                self.read_bio.clear();
-                Ok(self.read_bio.len())
-            } else {
-                buf.copy_from_slice(&self.read_bio[..buf.len()]);
-                trace!("read: copy_from_vec#3: {:?}:{:?}", buf.len(), self.read_bio.len());
-                self.read_bio.drain(0..buf.len());
-                Ok(buf.len())
-            }
-        }
+        common::util::vec_write_to_slice(&mut self.read_bio, buf)
     }
 }
 
 impl Write for BioStream {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         trace!("write");
-        self.write_bio.clear();
         self.write_bio.extend_from_slice(buf);
         Ok(buf.len())
     }

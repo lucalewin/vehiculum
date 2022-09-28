@@ -3,10 +3,7 @@ pub mod bio;
 use std::{path::Path, io::{Read, Write, BufReader}, fs::File};
 
 use openssl::{ssl::{SslContext, SslMethod, SslFiletype, SslVerifyMode, Ssl, SslStream, SslOptions}, x509::X509StoreContextRef, dh::Dh, pkey::Params};
-use log::{debug, trace};
-
-use crate::aasdk::{messenger::{Message, MessageType, encryption::EncryptionType, frame::FrameType}, channel::ChannelID};
-
+use log::{trace};
 
 pub struct SslHandler {
     pub ssl_stream: SslStream<BioStream>,
@@ -56,38 +53,19 @@ impl SslHandler {
         true
     }
 
-    pub fn bio_write(&mut self, buffer: &[u8]) {
+    pub fn bio_write(&mut self, buffer: &[u8]) -> std::io::Result<()> {
         trace!("bio_write");
         let stream = self.ssl_stream.get_mut();
 
         // write to read_bio
-        stream.read_bio.clear();
-        stream.read_bio.write_all(buffer).unwrap();
+        stream.read_bio.write_all(buffer)
     }
 
     pub fn bio_read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         trace!("bio_read");
         let stream = self.ssl_stream.get_mut();
 
-        {
-            if buffer.len() == stream.write_bio.len() {
-                buffer.copy_from_slice(&stream.write_bio);
-                trace!("read: copy_from_vec#1: {:?}", buffer.len());
-                stream.write_bio.clear();
-                Ok(buffer.len())
-            } else if buffer.len() > stream.write_bio.len() {
-                buffer[..stream.write_bio.len()].copy_from_slice(&stream.write_bio);
-                trace!("read: copy_from_vec#2: {:?}", stream.write_bio.len());
-                stream.write_bio.clear();
-                Ok(stream.write_bio.len())
-            } else {
-                buffer.copy_from_slice(&stream.write_bio[..buffer.len()]);
-                trace!("read: copy_from_vec#3: {:?}:{:?}", buffer.len(), stream.write_bio.len());
-                stream.write_bio.drain(0..buffer.len());
-                Ok(buffer.len())
-            }
-        }
-
+        common::util::vec_write_to_slice(&mut stream.write_bio, buffer)
     }
 
     pub fn decrypt_message(&self, _message: Vec<u8>) -> std::io::Result<Vec<u8>> {
@@ -113,38 +91,19 @@ impl BioStream {
 
 impl Read for BioStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-
         trace!("read");
 
         if self.read_bio.is_empty() {
             return Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "bio_in is empty"));
         }
 
-        {
-            if buf.len() == self.read_bio.len() {
-                buf.copy_from_slice(&self.read_bio);
-                trace!("read: copy_from_vec#1: {:?}", buf.len());
-                self.read_bio.clear();
-                Ok(buf.len())
-            } else if buf.len() > self.read_bio.len() {
-                buf[..self.read_bio.len()].copy_from_slice(&self.read_bio);
-                trace!("read: copy_from_vec#2: {:?}", self.read_bio.len());
-                self.read_bio.clear();
-                Ok(self.read_bio.len())
-            } else {
-                buf.copy_from_slice(&self.read_bio[..buf.len()]);
-                trace!("read: copy_from_vec#3: {:?}:{:?}", buf.len(), self.read_bio.len());
-                self.read_bio.drain(0..buf.len());
-                Ok(buf.len())
-            }
-        }
+        common::util::vec_write_to_slice(&mut self.read_bio, buf)
     }
 }
 
 impl Write for BioStream {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         trace!("write");
-        self.write_bio.clear();
         self.write_bio.extend_from_slice(buf);
         Ok(buf.len())
     }

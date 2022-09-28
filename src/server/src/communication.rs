@@ -99,9 +99,7 @@ impl Communicator {
                 format!("expected {:?} message, but received {:?}", MessageType::SslHandshake, message.message_type)));
         }
 
-        // let response = self.ssl_handler.handle_ssl_handshake(message);
-
-        self.ssl_handler.bio_write(message.content.as_slice());
+        self.ssl_handler.bio_write(message.content.as_slice())?;
 
         match self.ssl_handler.ssl_stream.accept() {
             Ok(_) => return Ok(()),
@@ -118,13 +116,14 @@ impl Communicator {
         let mut message_buffer = Vec::new();
         
         let mut buffer = [0u8; 512];
-        // while let Ok(len) = bio_stream.read(&mut buffer) {
         while let Ok(len) = self.ssl_handler.bio_read(&mut buffer) {
             if len <= 0 { break }
 
             message_buffer.extend_from_slice(&buffer[..len]);
         }
         
+        debug!("MESSAGE: {:?}", message_buffer);
+
         // create response handshake message
         let message = Message::new(
                 ChannelID::Control,
