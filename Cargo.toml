@@ -4,5 +4,6 @@ members = [
     "src/server",
     "src/client",
     "src/common",
-    "src/aasdk"
+    "src/aasdk",
+    "tools/getcert"
 ]
