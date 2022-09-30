@@ -61,11 +61,20 @@ impl SslHandler {
         stream.read_bio.write_all(buffer)
     }
 
+    #[allow(dead_code)]
     pub fn bio_read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         trace!("bio_read");
         let stream = self.ssl_stream.get_mut();
 
         common::util::vec_write_to_slice(&mut stream.write_bio, buffer)
+    }
+
+    pub fn bio_read_all(&mut self) -> std::io::Result<Vec<u8>> {
+        trace!("bio_read_all");
+        let stream = self.ssl_stream.get_mut();
+        let buffer = stream.write_bio.clone();
+        stream.write_bio.clear();
+        Ok(buffer)
     }
 
     pub fn decrypt_message(&self, _message: Vec<u8>) -> std::io::Result<Vec<u8>> {

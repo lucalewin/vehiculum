@@ -10,7 +10,7 @@ use aasdk::channel::ChannelID;
 use common::constants;
 use aasdk::messenger::{Message, MessageType, encryption::EncryptionType, frame::FrameType};
 
-use log::{debug};
+use log::{debug, trace};
 
 pub struct Communicator {
     stream: TcpStream,
@@ -29,14 +29,14 @@ impl Communicator {
     pub fn start(mut self) {
         std::thread::spawn(move || {
             loop {
-                let message = self.receive_message().unwrap();
+                let message = self.recv().unwrap();
                 self.handle_message(message).unwrap();
             }
         });
     }
 
     pub fn handle_message(&mut self, message: Message) -> std::io::Result<()> {
-        debug!("handling message: {:?}", message.message_type);
+        trace!("handling message: {:?}", message.message_type);
 
         if message.channel != ChannelID::Control {
             return self.channel_handler.handle_message(message);
@@ -47,7 +47,7 @@ impl Communicator {
             MessageType::VersionRequest => self.handle_version_request(message),
             MessageType::SslHandshake => self.handle_ssl_handshake(message),
             MessageType::AuthComplete => {
-                debug!("message: {:?}", message);
+                debug!("received auth complete message: {:?}", message);
                 self.send_service_discovery_request()},
             MessageType::ServiceDiscoveryResponse => self.handle_service_discovery_response(),
             MessageType::PingRequest => self.handle_ping_request(),
@@ -78,7 +78,7 @@ impl Communicator {
             MessageType::VersionResponse,
             [major, minor, response_status].concat());
 
-        self.send_message(message)
+        self.send(message)
     }
 
     fn send_service_discovery_request(&mut self) -> std::io::Result<()> {
@@ -101,28 +101,13 @@ impl Communicator {
 
         self.ssl_handler.bio_write(message.content.as_slice())?;
 
-        match self.ssl_handler.ssl_stream.accept() {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                if e.code() != openssl::ssl::ErrorCode::WANT_READ {
-                    panic!("SSL_connect failed: {:?}", e);
-                }
+        if let Err(e) = self.ssl_handler.ssl_stream.accept() {
+            if e.code()!= openssl::ssl::ErrorCode::WANT_READ {
+                panic!("SSL_accept failed: {:?}", e);
             }
         }
 
-        debug!("handshake accepted");
-
-        // create buffer with 512 bytes
-        let mut message_buffer = Vec::new();
-        
-        let mut buffer = [0u8; 512];
-        while let Ok(len) = self.ssl_handler.bio_read(&mut buffer) {
-            if len <= 0 { break }
-
-            message_buffer.extend_from_slice(&buffer[..len]);
-        }
-        
-        debug!("MESSAGE: {:?}", message_buffer);
+        let message_buffer = self.ssl_handler.bio_read_all()?;
 
         // create response handshake message
         let message = Message::new(
@@ -131,14 +116,12 @@ impl Communicator {
                 MessageType::SslHandshake,
                 message_buffer);
 
-        debug!("send message: {:?}", message);
-
-        self.send_message(message)?;
+        self.send(message)?;
 
         Ok(())
     }
 
-    pub fn send_message(&mut self, message: Message) -> std::io::Result<()> {
+    pub fn send(&mut self, message: Message) -> std::io::Result<()> {
         let mut writer = BufWriter::new(&self.stream);
         let buffer = message.to_bytes();
 
@@ -148,7 +131,7 @@ impl Communicator {
         Ok(())
     }
 
-    pub fn receive_message(&mut self) -> std::io::Result<Message> {
+    pub fn recv(&mut self) -> std::io::Result<Message> {
         let mut reader = BufReader::new(&self.stream);
 
         let mut channel;
