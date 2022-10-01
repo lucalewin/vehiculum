@@ -1,10 +1,9 @@
-use std::{net::TcpStream, io::{BufWriter, Write, BufReader, Read}};
-
-use aasdk::{messenger::{message::{Message, Channel, MessageTypeFlags, MessageType}, frame::FrameType, encryption::EncryptionType}, proto::enums::VersionResponseStatus, error::{Error, ErrorCode}};
+use std::net::TcpStream;
 
 mod logging;
 mod ssl;
 
+use aasdk::{messenger::{message::{Message, MessageType}, flags::{EncryptionType, FrameType, MessageTypeFlags}, frame::Frame, Messenger}, channel::Channel, error::{Error, ErrorCode}, proto::enums::VersionResponseStatus};
 use log::{debug, trace};
 use ssl::SslHandler;
 
@@ -40,39 +39,38 @@ impl Communicator {
         // ssl handshake
         let mut msg = None;
         while !self.do_ssl_handshake(&msg) {
-            msg = Some(self.recv().unwrap());
+            msg = Some(Messenger::receive(&self.stream).unwrap().message);
         }
 
         debug!("ssl handshake completed");
 
         self.send_auth_complete()?;
 
-        let message = self.recv().unwrap();
+        let frame = Messenger::receive(&self.stream).unwrap();
 
-        debug!("received message: {:?}", message);
+        debug!("received frame: {:?}", frame);
 
         Ok(())
     }
 
     fn send_version_request(&mut self) -> std::io::Result<()> {
         // current version = 1.1
-        let major = u16::to_be_bytes(0x0001);
-        let minor = u16::to_be_bytes(0x0001);
+        const MAJOR: [u8; 2] = u16::to_be_bytes(0x0001);
+        const MINOR: [u8; 2] = u16::to_be_bytes(0x0001);
 
-        let message = Message::new(
-            Channel::CONTROL,
+        let frame = Frame::new(
+            Channel::Control,
             EncryptionType::PLAIN.bits() | FrameType::BULK.bits() | MessageTypeFlags::CONTROL.bits(),
-            MessageType::VERSION_REQUEST,
-            [major, minor].concat());
+            Message::new(MessageType::VersionRequest, [MAJOR, MINOR].concat()));
 
-        self.send(message)
+        Messenger::send(&self.stream, frame)
     }
 
     fn expect_version_response(&mut self) -> Result<(), Error> {
-        let message = self.recv().unwrap();
+        let message = Messenger::receive(&self.stream).unwrap().message;
 
         if message.payload().len() != 6 ||
-                message.message_type() != MessageType::VERSION_RESPONSE ||
+                message.message_type() != MessageType::VersionResponse ||
                 u16::from_be_bytes([message.payload()[4], message.payload()[5]]) != VersionResponseStatus::MATCH.bits() {
             return Err(Error::new(ErrorCode::ControlVersionResponse, 0, "did not get version response (or version did not match)".to_string()));
         }
@@ -82,7 +80,7 @@ impl Communicator {
 
     fn do_ssl_handshake(&mut self, message: &Option<Message>) -> bool {
         if let Some(message) = message {
-            if message.message_type() != MessageType::SSL_HANDSHAKE {
+            if message.message_type() != MessageType::SslHandshake {
                 panic!("expected SSL handshake message");
             }
 
@@ -97,10 +95,9 @@ impl Communicator {
                 if e.code() != openssl::ssl::ErrorCode::WANT_READ {
                     panic!("SSL_connect failed: {:?}", e);
                 }
+                trace!("WANT_READ");
             }
         };
-
-        trace!("WANT_READ");
 
         let mut message_buffer = Vec::new();
         
@@ -111,87 +108,22 @@ impl Communicator {
         }
         
         // create response handshake message
-        let message = Message::new(
-                Channel::CONTROL,
+        let frame = Frame::new(
+                Channel::Control,
                 EncryptionType::PLAIN.bits() | FrameType::BULK.bits(),
-                MessageType::SSL_HANDSHAKE,
-                message_buffer);
+                Message::new(MessageType::SslHandshake, message_buffer));
 
-        self.send(message).unwrap();
+        Messenger::send(&self.stream, frame).unwrap();
 
         return false;
     }
 
     fn send_auth_complete(&mut self) -> std::io::Result<()> {
-        let message = Message::new(
-                Channel::CONTROL,
-                FrameType::BULK.bits() | EncryptionType::PLAIN.bits() | MessageTypeFlags::CONTROL.bits(),
-                MessageType::AUTH_COMPLETE,
-                vec![0x08, 0x00]);
+        let frame = Frame::new(
+            Channel::Control,
+            FrameType::BULK.bits() | EncryptionType::PLAIN.bits() | MessageTypeFlags::CONTROL.bits(),
+            Message::new(MessageType::AuthComplete, [0x08, 0x00].to_vec()));
 
-        self.send(message)
-    }
-
-    fn send(&mut self, message: Message) -> std::io::Result<()> {
-        let mut writer = BufWriter::new(&self.stream);
-
-        writer.write(&message.to_bytes())?;
-        writer.flush()?;
-
-        Ok(())
-    }
-
-    fn recv(&mut self) -> Result<Message, Error> {
-        let mut reader = BufReader::new(&self.stream);
-
-        const BUFFER_SIZE: usize = 100_000;
-        let mut buffer = vec![0u8; BUFFER_SIZE];
-
-        let mut channel: Channel;
-        let mut flags: u8;
-        let mut message_type: u16;
-        let mut payload = Vec::new();
-
-        let mut total_length = 0;
-
-        loop {
-            let transferred = reader.read(&mut buffer[..]).unwrap();
-
-            // debug!("recieved message: {:?}", &buffer[..transferred]);
-
-            channel = Channel::from_bits(buffer[0]).expect("not a valid channel");
-            flags = buffer[1];
-
-            let length = u16::from_be_bytes([buffer[2], buffer[3]]);
-            let mut offset = 4;
-
-            if flags & FrameType::BULK.bits() == FrameType::FIRST.bits() {
-                total_length = u32::from_be_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
-                offset += 4;
-            }
-            
-            let content = &buffer[offset..transferred];
-
-            message_type = u16::from_be_bytes([content[0], content[1]]);
-
-            if length as usize != content.len() {
-                return Err(Error::new(ErrorCode::InvalidPayloadLength, 0,
-                    format!("Invalid payload length: expected {} bytes, got {}", length, content.len())));
-            }
-
-            // check if payload is encrypted
-            if flags & EncryptionType::ENCRYPTED.bits() == EncryptionType::ENCRYPTED.bits() {
-                todo!()
-            }
-
-            // starting from index 2 because sizeof(MessageType) = 2
-            payload.extend_from_slice(&content[2..]);
-
-            if payload.len() >= total_length as usize {
-                break;
-            }
-        }
-
-        Ok(Message::new(channel, flags, message_type, payload))
+        Messenger::send(&self.stream, frame)
     }
 }
