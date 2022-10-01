@@ -1,83 +1,81 @@
-use bitflags::bitflags;
-
-bitflags!{
-    pub struct Channel: u8 {
-        const CONTROL = 0;
-        const INPUT = 1;
-        const SENSOR = 2;
-        const VIDEO = 3;
-        const MEDIA_AUDIO = 4;
-        const SPEECH_AUDIO = 5;
-        const SYSTEM_AUDIO = 6;
-        const AV_INPUT = 7;
-        const BLUETOOTH = 8;
-        const NONE = 255;
-    }
-
-    pub struct MessageTypeFlags: u8 {
-        const CONTROL = 0;
-        const SPECIFIC = 1 << 2;
-    }
-}
-
 #[derive(Debug)]
-pub struct MessageType(u16);
-
-impl MessageType {
-    pub const NONE: u16 = 0x0000;
-    pub const VERSION_REQUEST: u16 = 0x0001;
-    pub const VERSION_RESPONSE: u16 = 0x0002;
-    pub const SSL_HANDSHAKE: u16 = 0x0003;
-    pub const AUTH_COMPLETE: u16 = 0x0004;
-    pub const SERVICE_DISCOVERY_REQUEST: u16 = 0x0005;
-    pub const SERVICE_DISCOVERY_RESPONSE: u16 = 0x0006;
-    pub const CHANNEL_OPEN_REQUEST: u16 = 0x0007;
-    pub const CHANNEL_OPEN_RESPONSE: u16 = 0x0008;
-    pub const PING_REQUEST: u16 = 0x000b;
-    pub const PING_RESPONSE: u16 = 0x000c;
-    pub const NAVIGATION_FOCUS_REQUEST: u16 = 0x000d;
-    pub const NAVIGATION_FOCUS_RESPONSE: u16 = 0x000e;
-    pub const SHUTDOWN_REQUEST: u16 = 0x000f;
-    pub const SHUTDOWN_RESPONSE: u16 = 0x0010;
-    pub const VOICE_SESSION_REQUEST: u16 = 0x0011;
-    pub const AUDIO_FOCUS_REQUEST: u16 = 0x0012;
-    pub const AUDIO_FOCUS_RESPONSE: u16 = 0x0013;
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum MessageType {
+    VersionRequest = 0x1,
+    VersionResponse = 0x2,
+    SslHandshake = 0x3,
+    AuthComplete = 0x4,
+    ServiceDiscoveryRequest = 0x5,
+    ServiceDiscoveryResponse = 0x6,
+    ChannelOpenRequest = 0x7,
+    ChannelOpenResponse = 0x8,
+    PingRequest = 0xb,
+    PingResponse = 0xc,
+    NavigationFocusRequest = 0x0d,
+    NavigationFocusResponse = 0x0e,
+    ShutdownRequest = 0x000f,
+    ShutdownResponse = 0x0010,
+    VoiceSessionRequest = 0x11,
+    AudioFocusRequest = 0x12,
+    AudioFocusResponse = 0x13,
 }
+
+impl Into<u16> for MessageType {
+    fn into(self) -> u16 {
+        self as u16
+    }
+}
+
+impl TryFrom<[u8; 2]> for MessageType {
+    type Error = ();
+
+    fn try_from(value: [u8; 2]) -> Result<Self, Self::Error> {
+        let value = u16::from_be_bytes(value);
+
+        match value {
+            x if x == MessageType::VersionRequest as u16 => Ok(MessageType::VersionRequest),
+            x if x == MessageType::VersionResponse as u16 => Ok(MessageType::VersionResponse),
+            x if x == MessageType::SslHandshake as u16 => Ok(MessageType::SslHandshake),
+            x if x == MessageType::AuthComplete as u16 => Ok(MessageType::AuthComplete),
+            x if x == MessageType::ServiceDiscoveryRequest as u16 => Ok(MessageType::ServiceDiscoveryRequest),
+            x if x == MessageType::ServiceDiscoveryResponse as u16 => Ok(MessageType::ServiceDiscoveryResponse),
+            x if x == MessageType::ChannelOpenRequest as u16 => Ok(MessageType::ChannelOpenRequest),
+            x if x == MessageType::ChannelOpenResponse as u16 => Ok(MessageType::ChannelOpenResponse),
+            x if x == MessageType::PingRequest as u16 => Ok(MessageType::PingRequest),
+            x if x == MessageType::PingResponse as u16 => Ok(MessageType::PingResponse),
+            x if x == MessageType::NavigationFocusRequest as u16 => Ok(MessageType::NavigationFocusRequest),
+            x if x == MessageType::NavigationFocusResponse as u16 => Ok(MessageType::NavigationFocusResponse),
+            x if x == MessageType::VoiceSessionRequest as u16 => Ok(MessageType::VoiceSessionRequest),
+            x if x == MessageType::AudioFocusRequest as u16 => Ok(MessageType::AudioFocusRequest),
+            x if x == MessageType::AudioFocusResponse as u16 => Ok(MessageType::AudioFocusResponse),
+            _ => Err(())
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct Message {
-    channel: Channel,
-    flags: u8,
-    message_type: u16,
+    message_type: MessageType,
     payload: Vec<u8>,
 }
 
 impl Message {
-    pub fn new(channel: Channel, flags: u8, message_type: u16, payload: Vec<u8>) -> Self {
-        Self { channel, flags, message_type, payload }
+    pub fn new(message_type: MessageType, payload: Vec<u8>) -> Self {
+        Self { message_type, payload }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
 
-        bytes.push(self.channel.bits());
-        bytes.push(self.flags);
         bytes.extend(u16::to_be_bytes((self.payload.len() + 2) as u16));
-        bytes.extend(u16::to_be_bytes(self.message_type));
+        bytes.extend(u16::to_be_bytes(self.message_type.into()));
         bytes.extend(&self.payload);
 
         bytes
     }
 
-    pub fn channel(&self) -> Channel {
-        self.channel
-    }
-
-    pub fn flags(&self) -> u8 {
-        self.flags
-    }
-
-    pub fn message_type(&self) -> u16 {
+    pub fn message_type(&self) -> MessageType {
         self.message_type
     }
 

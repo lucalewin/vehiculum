@@ -1,17 +1,11 @@
-use bitflags::bitflags;
+use crate::channel::Channel;
 
-bitflags! {
-    pub struct FrameType: u8 {
-        const MIDDLE = 0;
-        const FIRST = 1 << 0;
-        const LAST = 1 << 1;
-        const BULK = FrameType::FIRST.bits | FrameType::LAST.bits;
-    }
+use super::message::Message;
 
-    pub struct FrameSizeType: u8 {
-        const SHORT = 0;
-        const EXTENDED = 1;
-    }
+#[derive(Debug)]
+pub enum FrameSizeType {
+    Short = 0,
+    Extended = 1,
 }
 
 #[derive(Debug)]
@@ -22,6 +16,25 @@ pub struct FrameSize {
     total_size: usize,
 }
 
-pub struct FrameHeader {
-    
+#[derive(Debug)]
+pub struct Frame {
+    channel: Channel,
+    flags: u8,
+    pub message: Message,
+}
+
+impl Frame {
+    pub fn new(channel: Channel, flags: u8, message: Message) -> Self {
+        Self { channel, flags, message }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buffer = Vec::new();
+
+        buffer.push(self.channel as u8);
+        buffer.push(self.flags);
+        buffer.extend_from_slice(self.message.to_bytes().as_slice());
+
+        buffer
+    }
 }
