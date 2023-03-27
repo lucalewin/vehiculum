@@ -1,4 +1,4 @@
-# better-car-display
+# Vehiculum
 This project aims to be an alternative to AndroidAuto with additional options like adding rear cameras
 
 ---
